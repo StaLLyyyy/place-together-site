@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="ru" data-l="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Place Together</title>
+<meta name="description" content="Плагин для Roblox Studio: стройте один плейс вместе в реальном времени. Курсоры друзей, общий скрипт, бэкапы и откат.">
+<meta property="og:title" content="Place Together">
+<meta property="og:description" content="Стройте один плейс в Roblox Studio вместе, в реальном времени.">
+<meta property="og:image" content="assets/studio.webp">
+<meta name="theme-color" content="#06080d">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2306080d'/%3E%3Cpath d='M8 8h10v10H8z' fill='%2356cdf2'/%3E%3Cpath d='M14 14h10v10H14z' fill='%23ff8a4c' fill-opacity='.9'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Onest:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: night-time build site. A dark stud grid, two teammate colours (cyan, ember) and the real Studio as the hero. */
+:root {
+  --bg: #06080d;
+  --bg-2: #0a0e16;
+  --card: #0e131d;
+  --card-2: #121927;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.14);
+  --fg: #eaf0f8;
+  --muted: #8d97ab;
+  --dim: #5d6679;
+  --cyan: #56cdf2;
+  --ember: #ff8a4c;
+  --ok: #3ccf86;
+  --display: "Unbounded", "Segoe UI", system-ui, sans-serif;
+  --body: "Onest", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+:root[data-l="en"] [lang="ru"], :root:not([data-l="en"]) [lang="en"] { display: none !important; }
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 17px/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+img { max-width: 100%; display: block; }
+a { color: inherit; }
+.wrap {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+h1, h2, h3 { margin: 0; font-family: var(--display); text-wrap: balance; }
+h1 { font-size: clamp(2.4rem, 6.6vw, 5.4rem); line-height: 1.02; font-weight: 800; letter-spacing: -0.035em; }
+h2 { font-size: clamp(1.8rem, 4vw, 3.1rem); line-height: 1.08; font-weight: 700; letter-spacing: -0.025em; }
+h3 { font-size: 1.15rem; line-height: 1.25; font-weight: 500; letter-spacing: -0.01em; }
+p { margin: 0; }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  font: 500 12px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+}
+.eyebrow::before { content: ""; width: 18px; height: 1px; background: currentColor; opacity: 0.6; }
+.lede { font-size: clamp(1.05rem, 1.6vw, 1.25rem); color: var(--muted); max-width: 36em; }
+.grad {
+  background: linear-gradient(100deg, var(--cyan) 0%, #b8ecff 35%, var(--ember) 70%, var(--cyan) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: sweep 9s linear infinite;
+}
+@keyframes sweep { to { background-position: -250% 0; } }
+
+/* Backdrop: stud grid and drifting glows */
+.backdrop { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.backdrop .studs {
+  position: absolute; inset: -2px;
+  background-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.07) 0 1.6px, transparent 2px);
+  background-size: 28px 28px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 0%, transparent 75%);
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 0%, transparent 75%);
+}
+.glow { position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%; filter: blur(90px); opacity: 0.22; }
+.glow.c { background: var(--cyan); top: -30vmax; left: -15vmax; animation: drift 22s ease-in-out infinite alternate; }
+.glow.e { background: var(--ember); top: -25vmax; right: -25vmax; opacity: 0.14; animation: drift 26s ease-in-out infinite alternate-reverse; }
+@keyframes drift { to { transform: translate(12vmax, 8vmax) scale(1.1); } }
+
+/* Header */
+header {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%);
+  background: rgba(6, 8, 13, 0.62); border-bottom: 1px solid var(--line);
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); }
+.bar { display: flex; align-items: center; gap: 28px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 11px; text-decoration: none; font: 700 16px/1 var(--display); letter-spacing: -0.02em; }
+.logo { width: 28px; height: 28px; position: relative; flex: none; }
+.logo i { position: absolute; width: 17px; height: 17px; border-radius: 4px; }
+.logo i:first-child { left: 0; top: 0; background: var(--cyan); }
+.logo i:last-child { right: 0; bottom: 0; background: var(--ember); mix-blend-mode: screen; }
+nav { display: flex; gap: 26px; margin-left: auto; font-size: 15px; }
+nav a { text-decoration: none; color: var(--muted); transition: color 0.2s; }
+nav a:hover { color: var(--fg); }
+.lang { display: flex; padding: 3px; border: 1px solid var(--line-2); border-radius: 999px; font: 500 12px/1 var(--mono); }
+.lang button { font: inherit; color: var(--muted); background: none; border: 0; padding: 6px 10px; border-radius: 999px; cursor: pointer; transition: background 0.2s, color 0.2s; }
+.lang button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+@media (max-width: 760px) { nav { display: none; } .lang { margin-left: auto; } }
+
+/* Buttons */
+.btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 15px 24px; border-radius: 12px; border: 1px solid transparent;
+  font: 600 15px/1 var(--body); text-decoration: none; cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.3s, background 0.2s, border-color 0.2s;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn-main { background: var(--fg); color: var(--bg); box-shadow: 0 0 0 0 rgba(86, 205, 242, 0); }
+.btn-main:hover { box-shadow: 0 10px 40px -8px rgba(86, 205, 242, 0.55); }
+.btn-line { border-color: var(--line-2); color: var(--fg); background: rgba(255, 255, 255, 0.03); }
+.btn-line:hover { border-color: rgba(255, 255, 255, 0.3); }
+.btn .arrow { transition: transform 0.2s; }
+.btn:hover .arrow { transform: translateX(3px); }
+.btn[disabled] { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+
+/* Hero */
+.hero { padding-block: clamp(56px, 9vw, 110px) 40px; text-align: center; }
+.hero .wrap { display: grid; justify-items: center; gap: 26px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 10px; padding: 7px 14px 7px 8px;
+  border: 1px solid var(--line-2); border-radius: 999px; background: rgba(255, 255, 255, 0.03);
+  font-size: 14px; color: var(--muted);
+}
+.pill b { font: 500 11px/1 var(--mono); letter-spacing: 0.06em; color: var(--bg); background: var(--cyan); padding: 5px 8px; border-radius: 999px; }
+.hero .lede { margin-inline: auto; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.hero .fine { font-size: 14px; color: var(--dim); }
+
+/* The real Studio, in a tilted frame */
+.stage { perspective: 1800px; padding-block: 40px 20px; }
+.shot {
+  position: relative; border-radius: 16px; padding: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 50px 120px -30px rgba(86, 205, 242, 0.28), 0 30px 80px -20px rgba(0, 0, 0, 0.8);
+  transform: rotateX(14deg) scale(0.96);
+  transform-origin: 50% 0%;
+  transition: transform 0.2s linear;
+}
+.shot img { border-radius: 10px; width: 100%; height: auto; aspect-ratio: 1936 / 1031; }
+.shot::after {
+  content: ""; position: absolute; inset: 8px; border-radius: 10px; pointer-events: none;
+  background: linear-gradient(180deg, transparent 60%, rgba(6, 8, 13, 0.55));
+}
+.cursor { position: absolute; z-index: 2; pointer-events: none; left: 0; top: 0; will-change: transform; }
+.cursor svg { width: 22px; height: 22px; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5)); }
+.cursor span {
+  position: absolute; left: 18px; top: 20px; white-space: nowrap;
+  font: 600 12px/1 var(--body); color: #06080d; padding: 6px 9px; border-radius: 8px 8px 8px 2px;
+}
+.cursor.c { color: var(--cyan); }
+.cursor.c span { background: var(--cyan); }
+.cursor.e { color: var(--ember); }
+.cursor.e span { background: var(--ember); }
+.toast {
+  position: absolute; z-index: 3; display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 12px; font-size: 13px; white-space: nowrap;
+  background: rgba(14, 19, 29, 0.86); border: 1px solid var(--line-2);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.7);
+  animation: bob 6s ease-in-out infinite;
+}
+.toast i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.toast.t1 { left: -2%; top: 30%; }
+.toast.t1 i { background: var(--ok); box-shadow: 0 0 12px var(--ok); }
+.toast.t2 { right: -2%; top: 58%; animation-delay: -3s; }
+.toast.t2 i { background: var(--ember); box-shadow: 0 0 12px var(--ember); }
+@keyframes bob { 50% { transform: translateY(-10px); } }
+@media (max-width: 700px) { .toast { display: none; } .cursor span { font-size: 10px; padding: 4px 6px; } }
+
+/* Ticker */
+.ticker { border-block: 1px solid var(--line); overflow: hidden; padding-block: 18px; margin-top: 30px; }
+.ticker .row { display: flex; gap: 48px; width: max-content; animation: tick 40s linear infinite; }
+.ticker span { font: 500 15px/1 var(--display); color: var(--dim); white-space: nowrap; display: flex; align-items: center; gap: 48px; }
+.ticker span::after { content: ""; width: 6px; height: 6px; border-radius: 2px; background: var(--line-2); }
+@keyframes tick { to { transform: translateX(-50%); } }
+
+/* Sections */
+.sec { padding-block: clamp(80px, 11vw, 140px); }
+.sec-head { display: grid; gap: 18px; max-width: 760px; margin-bottom: 56px; }
+.reveal { animation: rise both ease-out; animation-timeline: view(); animation-range: entry 0% entry 40%; }
+@keyframes rise { from { opacity: 0.25; transform: translateY(34px); } }
+
+/* Split rows with screenshots */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
+.split.flip { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+.split.flip .copy { order: 2; }
+.split + .split { margin-top: clamp(80px, 10vw, 130px); }
+.copy { display: grid; gap: 20px; align-content: start; min-width: 0; }
+.copy ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.copy li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; color: var(--muted); }
+.copy li::before { content: ""; width: 14px; height: 14px; margin-top: 5px; border-radius: 4px; border: 2px solid var(--cyan); }
+.split.flip li::before { border-color: var(--ember); }
+@media (max-width: 900px) {
+  .split, .split.flip { grid-template-columns: minmax(0, 1fr); }
+  .split.flip .copy { order: 0; }
+}
+.frame {
+  position: relative; border-radius: 18px; overflow: hidden; min-width: 0;
+  border: 1px solid var(--line-2); background: var(--card);
+  box-shadow: 0 40px 90px -40px rgba(0, 0, 0, 0.9);
+}
+.frame img { width: 100%; height: auto; }
+.frame .cap {
+  position: absolute; left: 14px; bottom: 14px; display: flex; gap: 8px; align-items: center;
+  font: 500 12px/1 var(--mono); padding: 8px 11px; border-radius: 9px;
+  background: rgba(6, 8, 13, 0.75); border: 1px solid var(--line-2); backdrop-filter: blur(8px);
+}
+.frame .cap i { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); animation: blink 2s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: 0.35; } }
+.scan::before {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(86, 205, 242, 0.12) 50%, transparent);
+  height: 30%; animation: scan 5s ease-in-out infinite;
+}
+@keyframes scan { from { transform: translateY(-100%); } to { transform: translateY(400%); } }
+.panel-pair { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 16px; align-items: start; }
+.panel-pair .frame:first-child { max-width: 380px; justify-self: end; width: 100%; }
+@media (max-width: 560px) { .panel-pair { grid-template-columns: minmax(0, 1fr); } .panel-pair .frame:first-child { justify-self: stretch; max-width: none; } }
+.stat-stack { display: grid; gap: 16px; }
+.stat { padding: 22px; border-radius: 16px; border: 1px solid var(--line); background: var(--card); display: grid; gap: 6px; }
+.stat b { font: 700 2rem/1 var(--display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 14px; }
+
+/* Code editor demo */
+.editor { border-radius: 18px; border: 1px solid var(--line-2); background: #0b0f17; overflow: hidden; min-width: 0; box-shadow: 0 40px 90px -40px rgba(0, 0, 0, 0.9); }
+.editor .tabs { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); font: 500 12px/1 var(--mono); color: var(--muted); }
+.editor .dots { display: flex; gap: 6px; margin-right: 8px; }
+.editor .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-2); }
+.editor .who { margin-left: auto; display: flex; gap: 6px; }
+.editor .who em { font-style: normal; padding: 4px 8px; border-radius: 6px; color: #06080d; font-size: 11px; }
+.editor pre { margin: 0; padding: 16px 0; font: 13.5px/1.85 var(--mono); overflow-x: auto; }
+.editor .l { display: grid; grid-template-columns: 44px minmax(0, 1fr); padding-right: 16px; white-space: pre; position: relative; }
+.editor .l::before { content: attr(data-n); color: var(--dim); text-align: right; padding-right: 14px; }
+.editor .l.hc { background: linear-gradient(90deg, rgba(86, 205, 242, 0.12), transparent 70%); }
+.editor .l.he { background: linear-gradient(90deg, rgba(255, 138, 76, 0.12), transparent 70%); }
+.editor .l.hc code { text-decoration: underline wavy rgba(86, 205, 242, 0.7); text-underline-offset: 5px; }
+.kw { color: #c792ea; } .fn { color: #82aaff; } .st { color: #c3e88d; } .nm { color: #f78c6c; } .cm { color: var(--dim); }
+.caret { display: inline-block; width: 2px; height: 1.15em; vertical-align: -0.2em; margin-left: 1px; animation: caret 1s steps(1) infinite; }
+.caret.c { background: var(--cyan); } .caret.e { background: var(--ember); }
+@keyframes caret { 50% { opacity: 0; } }
+.editor .status { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-top: 1px solid var(--line); font: 500 12px/1 var(--mono); color: var(--muted); }
+.editor .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+
+/* Bento */
+.bento { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
+.tile {
+  --mx: 50%; --my: 0%;
+  position: relative; overflow: hidden; border-radius: 20px; padding: 28px;
+  background: var(--card); border: 1px solid var(--line);
+  display: grid; gap: 12px; align-content: start; min-width: 0;
+  transition: border-color 0.3s, transform 0.3s;
+}
+.tile::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  background: radial-gradient(420px circle at var(--mx) var(--my), rgba(86, 205, 242, 0.13), transparent 60%);
+}
+.tile:hover { border-color: var(--line-2); transform: translateY(-3px); }
+.tile:hover::before { opacity: 1; }
+.tile p { color: var(--muted); font-size: 15.5px; }
+.tile .ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--card-2); border: 1px solid var(--line); }
+.tile .ico svg { width: 22px; height: 22px; }
+.t-a { grid-column: span 3; } .t-b { grid-column: span 3; }
+.t-c, .t-d, .t-e { grid-column: span 2; }
+@media (max-width: 900px) { .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); } .t-a, .t-b, .t-c, .t-d, .t-e { grid-column: span 1; } .t-e { grid-column: span 2; } }
+@media (max-width: 560px) { .bento { grid-template-columns: minmax(0, 1fr); } .t-e { grid-column: span 1; } }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.chips span { font: 500 12px/1 var(--mono); padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); color: var(--muted); background: var(--bg-2); }
+.roles { display: grid; gap: 8px; margin-top: 6px; }
+.roles div { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--line); font-size: 14px; }
+.roles em { font-style: normal; font: 500 11px/1 var(--mono); padding: 5px 8px; border-radius: 6px; }
+.roles .o { background: rgba(86, 205, 242, 0.15); color: var(--cyan); }
+.roles .ed { background: rgba(255, 138, 76, 0.15); color: var(--ember); }
+.roles .v { background: rgba(255, 255, 255, 0.06); color: var(--muted); }
+
+/* Steps */
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.step { padding: 30px; border-radius: 20px; border: 1px solid var(--line); background: linear-gradient(180deg, var(--card), transparent); display: grid; gap: 12px; align-content: start; }
+.step .n { font: 800 3.4rem/1 var(--display); letter-spacing: -0.05em; -webkit-text-stroke: 1px var(--line-2); color: transparent; }
+.step p { color: var(--muted); }
+.step code { font: 13px var(--mono); color: var(--cyan); background: rgba(86, 205, 242, 0.1); padding: 3px 7px; border-radius: 6px; }
+@media (max-width: 860px) { .steps { grid-template-columns: minmax(0, 1fr); } }
+
+/* Pricing */
+.plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.plan { position: relative; display: grid; grid-template-rows: auto auto auto 1fr auto; gap: 18px; padding: 32px; border-radius: 22px; border: 1px solid var(--line); background: var(--card); }
+.plan h3 { font-size: 1.05rem; }
+.price { font: 800 3rem/1 var(--display); letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.price small { font: 400 15px var(--body); color: var(--muted); letter-spacing: 0; }
+.plan .sub { color: var(--muted); font-size: 15px; }
+.plan ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 11px; font-size: 15px; align-content: start; }
+.plan li { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; }
+.plan li::before { content: "✓"; color: var(--dim); font-weight: 600; }
+.plan .btn { width: 100%; }
+.plan.hot { border-color: transparent; background: linear-gradient(var(--card-2), var(--card-2)) padding-box, conic-gradient(from var(--ang, 0deg), var(--cyan), var(--ember), var(--cyan)) border-box; border: 1px solid transparent; animation: spin 6s linear infinite; }
+.plan.hot li::before { color: var(--cyan); }
+@property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes spin { to { --ang: 360deg; } }
+.tag { position: absolute; top: -12px; left: 32px; font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: #06080d; background: var(--cyan); padding: 7px 10px; border-radius: 999px; }
+@media (max-width: 900px) { .plans { grid-template-columns: minmax(0, 1fr); } }
+.note { margin-top: 22px; color: var(--dim); font-size: 14px; }
+
+/* FAQ */
+.faq { max-width: 820px; border-top: 1px solid var(--line); }
+details { border-bottom: 1px solid var(--line); }
+summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 20px; padding-block: 24px; font: 500 1.08rem/1.35 var(--display); letter-spacing: -0.01em; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: ""; flex: none; width: 12px; height: 12px; margin-top: 6px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform 0.3s; }
+details[open] summary::after { transform: rotate(225deg); }
+details p { padding-bottom: 24px; color: var(--muted); max-width: 64ch; }
+
+/* Final CTA */
+.final { position: relative; overflow: hidden; border-radius: 28px; border: 1px solid var(--line-2); padding: clamp(48px, 8vw, 96px) clamp(24px, 6vw, 72px); text-align: center; display: grid; gap: 24px; justify-items: center; background: radial-gradient(ellipse at 50% 120%, rgba(86, 205, 242, 0.22), transparent 60%), radial-gradient(ellipse at 100% 0%, rgba(255, 138, 76, 0.14), transparent 50%), var(--card); }
+.final .lede { margin-inline: auto; }
+
+footer { padding-block: 48px 56px; color: var(--dim); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 32px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .shot { transform: none; }
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+<div class="backdrop" aria-hidden="true"><div class="studs"></div><div class="glow c"></div><div class="glow e"></div></div>
+
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="#top"><span class="logo" aria-hidden="true"><i></i><i></i></span>Place Together</a>
+    <nav>
+      <a href="#live"><span lang="ru">Как это выглядит</span><span lang="en">See it</span></a>
+      <a href="#features"><span lang="ru">Возможности</span><span lang="en">Features</span></a>
+      <a href="#pricing"><span lang="ru">Цены</span><span lang="en">Pricing</span></a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" id="lang-ru" data-set="ru" aria-pressed="true">RU</button>
+      <button type="button" id="lang-en" data-set="en" aria-pressed="false">EN</button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <span class="pill"><b>v3.5</b><span lang="ru">Плагин для Roblox Studio</span><span lang="en">A Roblox Studio plugin</span></span>
+      <h1>
+        <span lang="ru">Один плейс.<br><span class="grad">Вся команда.</span></span>
+        <span lang="en">One place.<br><span class="grad">The whole team.</span></span>
+      </h1>
+      <p class="lede">
+        <span lang="ru">Друзья заходят по коду и видят каждую правку вживую: детали, скрипты, ландшафт, UI. Не нужно публиковать игру и раздавать к ней доступ.</span>
+        <span lang="en">Friends join with a code and see every edit live: parts, scripts, terrain, UI. No need to publish your game or hand out access to it.</span>
+      </p>
+      <div class="cta">
+        <a class="btn btn-main" href="#pricing"><span lang="ru">Начать бесплатно</span><span lang="en">Start for free</span><span class="arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn-line" href="#live"><span lang="ru">Посмотреть вживую</span><span lang="en">See it live</span></a>
+      </div>
+      <p class="fine"><span lang="ru">Обычный Roblox Studio · Windows и Mac · без Team Create</span><span lang="en">Regular Roblox Studio · Windows and Mac · no Team Create</span></p>
+    </div>
+
+    <div class="wrap stage">
+      <div class="shot" id="shot">
+        <img src="assets/studio.webp" width="1936" height="1031" alt="Roblox Studio with the Place Together panel on the left; a teammate's camera and selection are shown in the viewport" fetchpriority="high">
+        <div class="cursor c" id="cur-c"><svg viewBox="0 0 22 22" aria-hidden="true"><path d="M3 2l15 8-7 2-3 7z" fill="currentColor" stroke="#06080d" stroke-width="1.2" stroke-linejoin="round"/></svg><span>mira.dev</span></div>
+        <div class="cursor e" id="cur-e"><svg viewBox="0 0 22 22" aria-hidden="true"><path d="M3 2l15 8-7 2-3 7z" fill="currentColor" stroke="#06080d" stroke-width="1.2" stroke-linejoin="round"/></svg><span>kai_studio</span></div>
+        <div class="toast t1"><i></i><span lang="ru">Всё синхронно · ревизия 636</span><span lang="en">Everything synced · revision 636</span></div>
+        <div class="toast t2"><i></i><span lang="ru">kai_studio подвинул Tower</span><span lang="en">kai_studio moved Tower</span></div>
+      </div>
+    </div>
+
+    <div class="ticker" aria-hidden="true">
+      <div class="row">
+        <span>Parts</span><span>Models</span><span>Scripts</span><span>Terrain</span><span>Unions</span><span>Packages</span><span>StarterGui</span><span>Lighting</span><span>ReplicatedStorage</span><span>Attributes</span>
+        <span>Parts</span><span>Models</span><span>Scripts</span><span>Terrain</span><span>Unions</span><span>Packages</span><span>StarterGui</span><span>Lighting</span><span>ReplicatedStorage</span><span>Attributes</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="live">
+    <div class="wrap">
+      <div class="split reveal">
+        <div class="copy">
+          <span class="eyebrow"><span lang="ru">Присутствие</span><span lang="en">Presence</span></span>
+          <h2><span lang="ru">Видно, где друг и что он трогает</span><span lang="en">See where your teammate is and what they touch</span></h2>
+          <p class="lede"><span lang="ru">Камера каждого участника висит в мире в его цвете, а выделенные им объекты обведены. Больше никаких «ты где?» в Discord.</span><span lang="en">Every member's camera floats in the world in their colour, and whatever they select is outlined. No more "where are you?" on Discord.</span></p>
+          <ul>
+            <li><span lang="ru">Камера, выделение и курсор мыши друга</span><span lang="en">Their camera, selection and mouse pointer</span></li>
+            <li><span lang="ru">Свежие изменения вспыхивают цветом автора</span><span lang="en">Fresh changes flash in their author's colour</span></li>
+            <li><span lang="ru">Кнопка «Follow»: полететь к другу</span><span lang="en">A Follow button flies you to them</span></li>
+          </ul>
+        </div>
+        <div class="frame scan">
+          <img src="assets/presence.webp" width="1050" height="510" alt="A teammate's camera marker and their selected character, outlined in cyan" loading="lazy">
+          <span class="cap"><i></i>mira.dev · Selected Rig</span>
+        </div>
+      </div>
+
+      <div class="split flip reveal">
+        <div class="copy">
+          <span class="eyebrow"><span lang="ru">Один скрипт на двоих</span><span lang="en">One script, two editors</span></span>
+          <h2><span lang="ru">Пишите один скрипт одновременно</span><span lang="en">Write the same script at the same time</span></h2>
+          <p class="lede"><span lang="ru">Правки сливаются построчно, курсор не прыгает. Строка, которую сейчас печатает друг, подчёркнута его цветом.</span><span lang="en">Edits merge line by line and your cursor stays put. The line your teammate is typing is underlined in their colour.</span></p>
+          <ul>
+            <li><span lang="ru">Слияние даже правок в одной строке</span><span lang="en">Merges even edits on the same line</span></li>
+            <li><span lang="ru">Предупреждение, если друг уже в этом скрипте</span><span lang="en">A heads-up when a teammate is already in the script</span></li>
+            <li><span lang="ru">Русский текст в строках не ломается</span><span lang="en">Non-English text survives intact</span></li>
+          </ul>
+        </div>
+        <div class="editor" aria-label="Two people editing one script">
+          <div class="tabs"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>CheckpointService.server.luau
+            <span class="who"><em style="background:var(--cyan)">mira.dev</em><em style="background:var(--ember)">you</em></span>
+          </div>
+          <pre><div class="l" data-n="1"><code><span class="kw">local</span> Players = game:GetService(<span class="st">"Players"</span>)</code></div><div class="l" data-n="2"><code><span class="kw">local</span> stages = {}</code></div><div class="l" data-n="3"><code> </code></div><div class="l" data-n="4"><code><span class="kw">local function</span> <span class="fn">reach</span>(player, n)</code></div><div class="l hc" data-n="5"><code>  <span id="type-c"></span><span class="caret c"></span></code></div><div class="l" data-n="6"><code>  player:SetAttribute(<span class="st">"Stage"</span>, n)</code></div><div class="l" data-n="7"><code><span class="kw">end</span></code></div><div class="l" data-n="8"><code> </code></div><div class="l he" data-n="9"><code><span id="type-e"></span><span class="caret e"></span></code></div><div class="l" data-n="10"><code><span class="kw">return</span> reach</code></div></pre>
+          <div class="status"><i></i><span id="merge-status"><span lang="ru">Изменения слиты</span><span lang="en">Changes merged</span></span></div>
+        </div>
+      </div>
+
+      <div class="split reveal">
+        <div class="copy">
+          <span class="eyebrow"><span lang="ru">Панель плагина</span><span lang="en">The plugin panel</span></span>
+          <h2><span lang="ru">Вся сессия в одной панели</span><span lang="en">The whole session in one panel</span></h2>
+          <p class="lede"><span lang="ru">Кто в сессии, кого пригласить, код для входа, чат и история бэкапов. Откат всего плейса в один клик.</span><span lang="en">Who's in, who to invite, the join code, chat and backup history. Roll the whole place back in one click.</span></p>
+        </div>
+        <div class="panel-pair">
+          <div class="frame"><img src="assets/panel.webp" width="380" height="864" alt="The Place Together panel: session status, people, invites, join code and backups" loading="lazy"></div>
+          <div class="stat-stack">
+            <div class="stat"><b>0.2 <small style="font-size:1rem">s</small></b><span lang="ru">между отправками правок</span><span lang="en">between edit uploads</span></div>
+            <div class="stat"><b>64³</b><span lang="ru">стада в одном куске ландшафта</span><span lang="en">studs per terrain chunk</span></div>
+            <div class="stat"><b>10</b><span lang="ru">последних правок в истории объекта</span><span lang="en">latest edits in each object's history</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="features" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow"><span lang="ru">Возможности</span><span lang="en">Features</span></span>
+        <h2><span lang="ru">Всё, чтобы строить вместе и ничего не потерять</span><span lang="en">Everything to build together and lose nothing</span></h2>
+      </div>
+      <div class="bento">
+        <div class="tile t-a reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.4 6.4M3 12a9 9 0 0 1 15.4-6.4"/><path d="M18 2v4h-4M6 22v-4h4"/></svg></div>
+          <h3><span lang="ru">Живая синхронизация</span><span lang="en">Live sync</span></h3>
+          <p><span lang="ru">Всё, что важно для игры, уходит друзьям сразу. Большая карта догружается в фоне, не тормозя Studio.</span><span lang="en">Everything that matters for the game reaches friends at once. Big maps keep loading in the background without slowing Studio.</span></p>
+          <div class="chips"><span>Parts</span><span>Scripts</span><span>Terrain</span><span>Unions</span><span>Packages</span><span>UI</span></div>
+        </div>
+        <div class="tile t-b reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="var(--ember)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 20a6.5 6.5 0 0 0-3-5.5"/></svg></div>
+          <h3><span lang="ru">Роли и коды входа</span><span lang="en">Roles and join codes</span></h3>
+          <p><span lang="ru">Пригласи по нику или дай код. Кому-то можно только смотреть.</span><span lang="en">Invite by username or share a code. Some people can just watch.</span></p>
+          <div class="roles">
+            <div>alex_builds <em class="o"><span lang="ru">владелец</span><span lang="en">owner</span></em></div>
+            <div>mira.dev <em class="ed"><span lang="ru">редактор</span><span lang="en">editor</span></em></div>
+            <div>kai_studio <em class="v"><span lang="ru">зритель</span><span lang="en">viewer</span></em></div>
+          </div>
+        </div>
+        <div class="tile t-c reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg></div>
+          <h3><span lang="ru">Бэкапы и откат</span><span lang="en">Backups and restore</span></h3>
+          <p><span lang="ru">Автоматические снимки и откат одной кнопкой. Текущее состояние сохраняется перед откатом.</span><span lang="en">Automatic snapshots and one-click restore. The current state is saved first.</span></p>
+        </div>
+        <div class="tile t-d reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="var(--ember)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12z"/></svg></div>
+          <h3><span lang="ru">Чат и лента</span><span lang="en">Chat and feed</span></h3>
+          <p><span lang="ru">Переписка прямо в Studio и лента: кто зашёл, кто что удалил, кто запустил плейтест.</span><span lang="en">Chat inside Studio and a feed of who joined, who deleted what and who started a playtest.</span></p>
+        </div>
+        <div class="tile t-e reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v4l2.5 1.5"/><circle cx="12" cy="12" r="9"/></svg></div>
+          <h3><span lang="ru">История объекта</span><span lang="en">Object history</span></h3>
+          <p><span lang="ru">Выдели любую деталь и увидишь, кто её создал и кто менял последним.</span><span lang="en">Select any part to see who made it and who changed it last.</span></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="how" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow"><span lang="ru">Как начать</span><span lang="en">Get started</span></span>
+        <h2><span lang="ru">Три шага до общей сессии</span><span lang="en">Three steps to a shared session</span></h2>
+      </div>
+      <div class="steps">
+        <div class="step reveal"><span class="n">01</span><h3><span lang="ru">Поставь плагин</span><span lang="en">Install the plugin</span></h3><p><span lang="ru">Один файл в папку плагинов Studio. Обновления потом приходят сами.</span><span lang="en">One file in your Studio plugins folder. Updates arrive on their own after that.</span></p></div>
+        <div class="step reveal"><span class="n">02</span><h3><span lang="ru">Открой плейс и нажми Host</span><span lang="en">Open a place and host</span></h3><p><span lang="ru">Плагин проверит плейс и выдаст код вида <code>K7QM-2XPA</code>.</span><span lang="en">The plugin checks the place and gives you a code like <code>K7QM-2XPA</code>.</span></p></div>
+        <div class="step reveal"><span class="n">03</span><h3><span lang="ru">Друг вводит код</span><span lang="en">Your friend enters it</span></h3><p><span lang="ru">В пустом плейсе. Через минуту у вас один и тот же мир.</span><span lang="en">In an empty place. A minute later you share one world.</span></p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="pricing" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow"><span lang="ru">Цены</span><span lang="en">Pricing</span></span>
+        <h2><span lang="ru">Плагин бесплатный. Платишь за сервер, который не нужно поднимать</span><span lang="en">The plugin is free. You pay for a server you don't have to run</span></h2>
+      </div>
+      <div class="plans">
+        <div class="plan reveal">
+          <h3>Free</h3>
+          <p class="price">$0</p>
+          <p class="sub"><span lang="ru">Для тех, кто готов поднять свой сервер.</span><span lang="en">For people happy to run their own server.</span></p>
+          <ul>
+            <li><span lang="ru">Все функции плагина</span><span lang="en">Every plugin feature</span></li>
+            <li><span lang="ru">Свой сервер по инструкции</span><span lang="en">Your own server, from the guide</span></li>
+            <li><span lang="ru">Без лимита на людей</span><span lang="en">No member limit</span></li>
+          </ul>
+          <button class="btn btn-line" type="button" disabled><span lang="ru">Скоро</span><span lang="en">Coming soon</span></button>
+        </div>
+        <div class="plan hot reveal">
+          <span class="tag"><span lang="ru">Лучший выбор</span><span lang="en">Best value</span></span>
+          <h3>Pro</h3>
+          <p class="price">$4<small> <span lang="ru">/ мес за команду</span><span lang="en">/ mo per team</span></small></p>
+          <p class="sub"><span lang="ru">Наш сервер. Ставишь плагин и работаешь.</span><span lang="en">Our server. Install the plugin and go.</span></p>
+          <ul>
+            <li><span lang="ru">Ничего не настраиваешь</span><span lang="en">Nothing to set up</span></li>
+            <li><span lang="ru">До 10 человек в комнате</span><span lang="en">Up to 10 people per room</span></li>
+            <li><span lang="ru">Бэкапы за 30 дней</span><span lang="en">30 days of backups</span></li>
+            <li><span lang="ru">Поддержка в Discord</span><span lang="en">Support on Discord</span></li>
+          </ul>
+          <button class="btn btn-main" type="button" disabled><span lang="ru">Скоро</span><span lang="en">Coming soon</span></button>
+        </div>
+        <div class="plan reveal">
+          <h3>Studio</h3>
+          <p class="price">$12<small> <span lang="ru">/ мес</span><span lang="en">/ mo</span></small></p>
+          <p class="sub"><span lang="ru">Для студий с несколькими проектами.</span><span lang="en">For studios with several projects.</span></p>
+          <ul>
+            <li><span lang="ru">Несколько комнат</span><span lang="en">Several rooms</span></li>
+            <li><span lang="ru">До 30 человек</span><span lang="en">Up to 30 people</span></li>
+            <li><span lang="ru">Бэкапы за 90 дней</span><span lang="en">90 days of backups</span></li>
+            <li><span lang="ru">Помощь с переездом</span><span lang="en">Help moving your team</span></li>
+          </ul>
+          <button class="btn btn-line" type="button" disabled><span lang="ru">Скоро</span><span lang="en">Coming soon</span></button>
+        </div>
+      </div>
+      <p class="note"><span lang="ru">Оплата откроется скоро.</span><span lang="en">Payments open soon.</span></p>
+    </div>
+  </section>
+
+  <section class="sec" id="faq" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">FAQ</span>
+        <h2><span lang="ru">Частые вопросы</span><span lang="en">Common questions</span></h2>
+      </div>
+      <div class="faq">
+        <details><summary><span lang="ru">Нужен ли Team Create?</span><span lang="en">Do I need Team Create?</span></summary><p><span lang="ru">Нет. Плагин работает в обычном Studio и синхронизирует плейс через свой сервер. Публиковать игру не нужно.</span><span lang="en">No. The plugin works in regular Studio and syncs the place through its own server. You don't need to publish the game.</span></p></details>
+        <details><summary><span lang="ru">Что синхронизируется?</span><span lang="en">What gets synced?</span></summary><p><span lang="ru">Workspace, ReplicatedStorage, ServerScriptService, StarterGui и другие игровые сервисы: детали, модели, скрипты, UI, ландшафт, юнионы и пакеты.</span><span lang="en">Workspace, ReplicatedStorage, ServerScriptService, StarterGui and the other game services: parts, models, scripts, UI, terrain, unions and packages.</span></p></details>
+        <details><summary><span lang="ru">Что если мы правим одно и то же?</span><span lang="en">What if we edit the same thing?</span></summary><p><span lang="ru">Разные свойства одного объекта сливаются, строки в скрипте тоже. Только если двое печатают в одном и том же месте, у каждого остаётся свой текст, и плагин об этом скажет.</span><span lang="en">Different properties of one object are merged, and so are script lines. Only when two people type in the very same spot does each keep their own text, and the plugin tells you.</span></p></details>
+        <details><summary><span lang="ru">Можно ли откатиться, если кто-то всё сломал?</span><span lang="en">Can I undo it if someone breaks everything?</span></summary><p><span lang="ru">Да. Плагин сам делает снимки, а владелец откатывает весь плейс к любому из них. Перед откатом текущее состояние тоже сохраняется.</span><span lang="en">Yes. The plugin takes snapshots on its own, and the owner can restore the whole place to any of them. The current state is saved first.</span></p></details>
+        <details><summary><span lang="ru">Что с плейтестом?</span><span lang="en">What about playtesting?</span></summary><p><span lang="ru">Пока ты в Play, служебные данные плагина в игре не видны, а остальные видят в панели, что ты тестируешь.</span><span lang="en">While you're in Play, the plugin's data stays out of the game, and everyone else sees in the panel that you're testing.</span></p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" style="padding-top:0">
+    <div class="wrap">
+      <div class="final reveal">
+        <h2><span lang="ru">Хватит строить<br><span class="grad">по очереди</span></span><span lang="en">Stop building<br><span class="grad">one at a time</span></span></h2>
+        <p class="lede"><span lang="ru">Позови друзей в свой плейс и делайте игру вместе, прямо сейчас.</span><span lang="en">Bring your friends into your place and make the game together, right now.</span></p>
+        <a class="btn btn-main" href="#pricing"><span lang="ru">Выбрать тариф</span><span lang="en">Pick a plan</span><span class="arrow" aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Place Together</span>
+    <span><span lang="ru">Не связан с Roblox Corporation. Roblox и Roblox Studio принадлежат их владельцам.</span><span lang="en">Not affiliated with Roblox Corporation. Roblox and Roblox Studio belong to their owners.</span></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Language
+  function setLang(lang) {
+    root.setAttribute("data-l", lang);
+    root.setAttribute("lang", lang);
+    document.querySelectorAll(".lang button").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.set === lang));
+    });
+    try { localStorage.setItem("pt-lang", lang); } catch (e) {}
+  }
+  var saved = null;
+  try { saved = localStorage.getItem("pt-lang"); } catch (e) {}
+  if (!saved && navigator.language && !/^ru|^uk|^be|^kk/i.test(navigator.language)) saved = "en";
+  setLang(saved === "en" ? "en" : "ru");
+  document.querySelectorAll(".lang button").forEach(function (b) {
+    b.addEventListener("click", function () { setLang(b.dataset.set); });
+  });
+
+  // Hero screenshot straightens as you scroll
+  var shot = document.getElementById("shot");
+  function tilt() {
+    var r = shot.getBoundingClientRect();
+    var p = Math.min(1, Math.max(0, 1 - (r.top - 80) / (window.innerHeight * 0.7)));
+    shot.style.transform = "rotateX(" + (14 * (1 - p)).toFixed(2) + "deg) scale(" + (0.96 + 0.04 * p).toFixed(3) + ")";
+  }
+  if (!reduce) { tilt(); window.addEventListener("scroll", tilt, { passive: true }); window.addEventListener("resize", tilt); }
+
+  // Teammate cursors wander over the real viewport (percent of the screenshot)
+  var paths = {
+    "cur-c": [[38, 40], [52, 55], [56, 62], [44, 48], [36, 36]],
+    "cur-e": [[70, 62], [64, 52], [74, 46], [80, 58], [70, 62]]
+  };
+  function place(el, pt) {
+    el.style.transform = "translate(" + (pt[0] / 100 * shot.clientWidth) + "px," + (pt[1] / 100 * shot.clientHeight) + "px)";
+  }
+  Object.keys(paths).forEach(function (id, k) {
+    var el = document.getElementById(id), pts = paths[id];
+    place(el, pts[0]);
+    if (reduce) return;
+    var t0 = performance.now() + k * 900, seg = 2600;
+    function frame(now) {
+      var t = Math.max(0, now - t0) / seg, i = Math.floor(t) % (pts.length - 1), f = t % 1;
+      var e = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
+      var a = pts[i], b = pts[i + 1];
+      place(el, [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e]);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  });
+
+  // Two people typing in one script
+  var lines = {
+    c: "stages[player] = n  -- mira.dev",
+    e: "Players.PlayerRemoving:Connect(function(p) stages[p] = nil end)"
+  };
+  var tc = document.getElementById("type-c"), te = document.getElementById("type-e");
+  if (reduce) { tc.textContent = lines.c; te.textContent = lines.e; }
+  else {
+    var i = 0, j = 0, hold = 0;
+    setInterval(function () {
+      if (hold > 0) { hold--; if (hold === 0) { i = 0; j = 0; } }
+      else {
+        if (i < lines.c.length) i++;
+        if (j < lines.e.length && Math.random() > 0.25) j++;
+        if (i >= lines.c.length && j >= lines.e.length) hold = 40;
+      }
+      tc.textContent = lines.c.slice(0, i);
+      te.textContent = lines.e.slice(0, j);
+    }, 70);
+  }
+
+  // Spotlight that follows the mouse on feature tiles
+  document.querySelectorAll(".tile").forEach(function (t) {
+    t.addEventListener("pointermove", function (ev) {
+      var r = t.getBoundingClientRect();
+      t.style.setProperty("--mx", (ev.clientX - r.left) + "px");
+      t.style.setProperty("--my", (ev.clientY - r.top) + "px");
+    });
+  });
+})();
+</script>
+</body>
+</html>
